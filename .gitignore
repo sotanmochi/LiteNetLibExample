@@ -16,6 +16,9 @@ Assets/Plugins/*
 !Assets/LiteNetLibExample/
 !Assets/LiteNetLibExample.meta
 
+!Assets/LiteNetLibExtension/
+!Assets/LiteNetLibExtension.meta
+
 # ======================================= #
 # Third party assets (Not ignored assets)
 # ======================================= #
