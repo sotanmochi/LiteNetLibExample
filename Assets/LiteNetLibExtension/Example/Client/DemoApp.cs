@@ -13,7 +13,10 @@ namespace LiteNetLibExtension.Example.Client
         [SerializeField] Button _CreateRoom;
         [SerializeField] Button _JoinRoom;
         [SerializeField] Button _LeaveRoom;
-        
+
+        [SerializeField] Text _ConnectionState;
+        [SerializeField] Text _JoinState;
+
         [SerializeField] Button _InstantiateObject;
 
         [SerializeField] InputField _RoomName;
@@ -25,6 +28,12 @@ namespace LiteNetLibExtension.Example.Client
             _JoinRoom.onClick.AddListener(OnClickJoinRoom);
             _LeaveRoom.onClick.AddListener(OnClickLeaveRoom);
             _InstantiateObject.onClick.AddListener(OnClickInstantiate);
+        }
+
+        void Update()
+        {
+            _ConnectionState.text = "Connected: " + _MultiplayerClient.ConnectedServer;
+            _JoinState.text = "Joined: " + _MultiplayerClient.Joined;
         }
 
         void OnClickConnectServer()

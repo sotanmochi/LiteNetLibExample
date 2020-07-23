@@ -139,7 +139,7 @@ namespace LiteNetLibExtension
 
         void INetEventListener.OnNetworkReceive(NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
         {
-           if (reader.UserDataSize >= 4)
+           if (reader.UserDataSize >= 1)
             {
                 byte dataType = reader.GetByte();
                 OnNetworkReceived?.Invoke(dataType, peer, reader, deliveryMethod);

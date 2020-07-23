@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -12,6 +13,7 @@ namespace LiteNetLibExtension.Example.Client
     {
         [SerializeField] MultiplayerClient _MultiplayerClient;
 
+        Dictionary<int, GameObject> _LocalObjectDictionary;
         Dictionary<int, GameObject> _NetworkObjectDictionary;
         int _LastUsedSubId = 0;
 
@@ -22,7 +24,13 @@ namespace LiteNetLibExtension.Example.Client
             _MultiplayerClient.OnConnectedServer += OnConnectedServer;
             _MultiplayerClient.OnDisconnectedServer += OnDisconnectedServer;
 
+            _LocalObjectDictionary = new Dictionary<int, GameObject>();
             _NetworkObjectDictionary = new Dictionary<int, GameObject>();
+        }
+
+        void Update()
+        {
+            SendPose();
         }
 
         public void NetworkInstantiate(string prefabName, Vector3 position, Quaternion rotation)
@@ -36,11 +44,11 @@ namespace LiteNetLibExtension.Example.Client
                 subId = (subId + 1) % NetworkDataSize.MaxNetworkObjectID;
                 if (subId == 0)
                 {
-                    continue;   // avoid using subID 0
+                    continue; // avoid using subID 0
                 }
 
                 newObjectId = subId + ownerIdOffset;
-                if (!_NetworkObjectDictionary.ContainsKey(newObjectId))
+                if (!_LocalObjectDictionary.ContainsKey(newObjectId))
                 {
                     _LastUsedSubId = newObjectId;
                     break;
@@ -48,8 +56,8 @@ namespace LiteNetLibExtension.Example.Client
             }
 
             GameObject prefab = Resources.Load<GameObject>(prefabName);
-            _NetworkObjectDictionary[newObjectId] = Instantiate(prefab, position, rotation);
-            _NetworkObjectDictionary[newObjectId].name = newObjectId.ToString();
+            _LocalObjectDictionary[newObjectId] = Instantiate(prefab, position, rotation);
+            _LocalObjectDictionary[newObjectId].name = newObjectId.ToString();
 
             NetDataWriter dataWriter = new NetDataWriter();
             dataWriter.Put(NetworkDataType.NetworkInstantiate);
@@ -66,8 +74,42 @@ namespace LiteNetLibExtension.Example.Client
             _MultiplayerClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
         }
 
+        public void SendPose()
+        {
+            if (!_MultiplayerClient.Joined || _LocalObjectDictionary.Count < 1)
+            {
+                return;
+            }
+
+            NetDataWriter dataWriter = new NetDataWriter();
+            dataWriter.Put(NetworkDataType.UpdateObjectPose);
+            dataWriter.Put(_MultiplayerClient.GroupName);
+
+            int dataNum = _LocalObjectDictionary.Count;
+            dataWriter.Put(dataNum);
+
+            foreach (var localObject in _LocalObjectDictionary)
+            {
+                int id = localObject.Key;
+                Vector3 position = localObject.Value.transform.position;
+                Quaternion rotation = localObject.Value.transform.rotation;
+
+                dataWriter.Put(id);
+                dataWriter.Put(position.x);
+                dataWriter.Put(position.y);
+                dataWriter.Put(position.z);
+                dataWriter.Put(rotation.x);
+                dataWriter.Put(rotation.y);
+                dataWriter.Put(rotation.z);
+                dataWriter.Put(rotation.w);
+            }
+
+            _MultiplayerClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
+        }
+
         void OnNetworkReceivedHandler(byte networkDataType, NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
         {
+            Debug.Log("OnNetworkReceived@GameClient");
             if (networkDataType == NetworkDataType.NetworkInstantiate)
             {
                 int objectId = reader.GetInt();
@@ -84,7 +126,41 @@ namespace LiteNetLibExtension.Example.Client
             if (networkDataType == NetworkDataType.RemoveNetworkObjects)
             {
                 int actorId = reader.GetInt();
-                OnRemoveNetworkObjects(actorId);
+                int dataNum = reader.GetInt();
+
+                List<int> objectIdList = new List<int>(dataNum);
+                for (int k = 0; k < dataNum; k++)
+                {
+                    int objectId = reader.GetInt();
+                    objectIdList.Add(objectId);
+                }
+
+                OnRemoveNetworkObjects(objectIdList);
+            }
+            if (networkDataType == NetworkDataType.UpdateObjectPose)
+            {
+                int dataNum = reader.GetInt();
+                Debug.Log("dataNum: " + dataNum);
+
+                Vector3 position = Vector3.zero;
+                Quaternion rotation = Quaternion.identity;
+                for (int k = 0; k < dataNum; k++)
+                {
+                    int objectId = reader.GetInt();
+                    position.x = reader.GetFloat();
+                    position.y = reader.GetFloat();
+                    position.z = reader.GetFloat();
+                    rotation.x = reader.GetFloat();
+                    rotation.y = reader.GetFloat();
+                    rotation.z = reader.GetFloat();
+                    rotation.w = reader.GetFloat();
+
+                    if (_NetworkObjectDictionary.ContainsKey(objectId))
+                    {
+                        Debug.Log("Id: " + objectId + ", Pos: " + position);
+                        _NetworkObjectDictionary[objectId].transform.SetPositionAndRotation(position, rotation);
+                    }
+                }
             }
         }
 
@@ -100,25 +176,42 @@ namespace LiteNetLibExtension.Example.Client
 
         void OnLeftRoom(int actorId)
         {
-            OnRemoveNetworkObjects(actorId);
+            if (actorId == _MultiplayerClient.LocalActorId)
+            {
+                OnRemoveLocalObjects();
+            }
         }
 
         void OnNetworkInstantiate(int objectId, string prefabName, float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float rotW)
         {
             GameObject prefab = Resources.Load<GameObject>(prefabName);
             _NetworkObjectDictionary[objectId] = Instantiate(prefab, new Vector3(posX, posY, posZ), new Quaternion(rotX, rotY, rotZ, rotW));
+            _NetworkObjectDictionary[objectId].name = objectId + "(clone)";
         }
 
-        void OnRemoveNetworkObjects(int actorId)
+        void OnRemoveLocalObjects()
         {
-            int ownerOffset = NetworkDataSize.MaxNetworkObjectID * actorId;
-            int ownerEnd = NetworkDataSize.MaxNetworkObjectID * (actorId + 1);
-            for (int i = ownerOffset; i < ownerEnd; i++)
+            List<int> keyList = _LocalObjectDictionary.Keys.ToList();
+            foreach (int key in keyList)
             {
                 GameObject go;
-                if (_NetworkObjectDictionary.TryGetValue(i, out go))
+                if (_LocalObjectDictionary.TryGetValue(key, out go))
                 {
-                    _NetworkObjectDictionary.Remove(i);
+                    _LocalObjectDictionary.Remove(key);
+                    Destroy(go);
+                }
+            }
+            _LastUsedSubId = 0;
+        }
+
+        void OnRemoveNetworkObjects(List<int> objectIdList)
+        {
+            foreach (int id in objectIdList)
+            {
+                GameObject go;
+                if (_NetworkObjectDictionary.TryGetValue(id, out go))
+                {
+                    _NetworkObjectDictionary.Remove(id);
                     Destroy(go);
                 }
             }

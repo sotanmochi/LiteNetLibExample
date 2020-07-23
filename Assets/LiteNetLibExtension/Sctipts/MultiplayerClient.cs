@@ -26,6 +26,13 @@ namespace LiteNetLibExtension
         public int LocalActorId => _LocalActorId;
         string _LocalUserName;
         public string LocalUserName => _LocalUserName;
+        string _GroupName;
+        public string GroupName => _GroupName;
+
+        bool _ConnectedServer = false;
+        public bool ConnectedServer => _ConnectedServer;
+        bool _Joined = false;
+        public bool Joined => _Joined;
 
         bool _Initialized = false;
 
@@ -37,7 +44,7 @@ namespace LiteNetLibExtension
 
         public void Initialize()
         {
-            _LiteNetLibClient.OnNetworkReceived += OnNetworkReceived;
+            // _LiteNetLibClient.OnNetworkReceived += OnNetworkReceived;
             _LiteNetLibClient.OnNetworkReceived += OnNetworkReceivedHandler;
             _LiteNetLibClient.OnDisconnectedServer += OnDisconnectedServer;
             _LiteNetLibClient.OnDisconnectedServer += OnDisconnectedServerHandler;
@@ -61,7 +68,14 @@ namespace LiteNetLibExtension
 
         public void SendData(NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
         {
-            _LiteNetLibClient.SendData(dataWriter, deliveryMethod);
+            if (_Joined)
+            {
+                _LiteNetLibClient.SendData(dataWriter, deliveryMethod);
+            }
+            else
+            {
+                Debug.LogError("MultiplayerClient has not joined room !!");
+            }
         }
 
         public void CreateRoom(int actorId, string groupName)
@@ -84,6 +98,7 @@ namespace LiteNetLibExtension
 
         public void LeaveRoom()
         {
+            _Joined = false;
             Debug.Log("LeaveRoom");
             NetDataWriter dataWriter = new NetDataWriter();
             dataWriter.Put(NetworkDataType.LeaveRoom);
@@ -117,16 +132,22 @@ namespace LiteNetLibExtension
                 int actorId = reader.GetInt();
                 OnLeftRoom?.Invoke(actorId);
             }
+
+            OnNetworkReceived?.Invoke(networkDataType, peer, reader, deliveryMethod);
         }
 
         void OnConnectedServerHandler(int actorId)
         {
             Debug.Log("OnConnectedServerHandler@MultiplayerClient");
             _LocalActorId = actorId;
+            _ConnectedServer = true;
+            _Joined = false;
         }
 
         void OnDisconnectedServerHandler()
         {
+            _ConnectedServer = false;
+            _Joined = false;
             Debug.Log("OnDisconnectedServerHandler@MultiplayerClient");
         }
 
@@ -137,8 +158,10 @@ namespace LiteNetLibExtension
 
         void OnJoinedRoomHandler(int actorId, string userName, string groupName)
         {
+            _Joined = true;
             _LocalActorId = actorId;
             _LocalUserName = userName;
+            _GroupName = groupName;
             Debug.Log("OnJoinedRoom: " + ": " + actorId + ": " + userName + ": " + groupName);
         }
 

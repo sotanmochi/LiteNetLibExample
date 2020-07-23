@@ -8,7 +8,13 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/LiteNetLibExample/LiteNetLibClient/LiteNetLibClient.unity
     guid: 116af09813c825144b588b6682724aaf
-  - enabled: 1
+  - enabled: 0
     path: Assets/LiteNetLibExample/LiteNetLibServer/LiteNetLibServer.unity
     guid: 56a205619ad14ee4591ac6a38f4ea75c
+  - enabled: 0
+    path: Assets/LiteNetLibExtension/Example/Server/Server.unity
+    guid: f4b26850098b8634f80c53a6e8716fb0
+  - enabled: 1
+    path: Assets/LiteNetLibExtension/Example/Client/Client.unity
+    guid: cbd5170131471134e902b5907281e51f
   m_configObjects: {}

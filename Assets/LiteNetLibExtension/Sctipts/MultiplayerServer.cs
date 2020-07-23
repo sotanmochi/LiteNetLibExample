@@ -21,14 +21,20 @@ namespace LiteNetLibExtension
         public List<int> Actors = new List<int>();
     }
 
+    public delegate void OnCreateRoomDelegate(int actorId, string groupName);
+    public delegate void OnLeaveRoomDelegate(int actorId);
+
     public class MultiplayerServer : MonoBehaviour
     {
         [SerializeField] LiteNetLibServer _LiteNetLibServer;
         public LiteNetLibServer LiteNetLibServer => _LiteNetLibServer;
         public OnNetworkReceiveDelegate OnNetworkReceived;
+        public OnCreateRoomDelegate OnCreateRoom;
+        public OnLeaveRoomDelegate OnLeaveRoom;
 
         Dictionary<int, Actor> _Actors = new Dictionary<int, Actor>();
         Dictionary<string, Group> _Groups = new Dictionary<string, Group>();
+        public Dictionary<int, Actor> Actors => _Actors;
 
         public void StartServer()
         {
@@ -36,6 +42,17 @@ namespace LiteNetLibExtension
             _LiteNetLibServer.OnNetworkReceived += OnNetworkReceivedHandler;
             _LiteNetLibServer.OnPeerDisconnectedHandler += OnPeerDisconnectedHandler;
             _LiteNetLibServer.StartServer();
+        }
+
+        public void SendToGroup(string groupName, NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
+        {
+            if (_Groups.ContainsKey(groupName))
+            {
+                foreach (int actorId in _Groups[groupName].Actors)
+                {
+                    _LiteNetLibServer.SendData(actorId, dataWriter, deliveryMethod);
+                }
+            }
         }
 
         public void SendToGroup(int senderId, NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
@@ -104,7 +121,7 @@ namespace LiteNetLibExtension
                 group.Name = groupName;
                 _Groups.Add(groupName, group);
 
-                Debug.Log("CrateRoom");
+                OnCreateRoom?.Invoke(actorId, groupName);
 
                 NetDataWriter dataWriter = new NetDataWriter();
                 dataWriter.Put(NetworkDataType.OnCreatedRoom);
@@ -141,7 +158,7 @@ namespace LiteNetLibExtension
             dataWriter.Put(userName);
             dataWriter.Put(groupName);
 
-            SendToGroup(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
+            _LiteNetLibServer.SendData(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
         }
 
         void LeaveRoom(int actorId)
@@ -150,6 +167,8 @@ namespace LiteNetLibExtension
             {
                 string groupName = _Actors[actorId].GroupName;
                 Group group = _Groups[groupName];
+
+                OnLeaveRoom?.Invoke(actorId);
 
                 NetDataWriter dataWriter = new NetDataWriter();
                 dataWriter.Put(NetworkDataType.OnLeftRoom);

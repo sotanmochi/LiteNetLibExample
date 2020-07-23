@@ -5,13 +5,12 @@ namespace LiteNetLibExtension
 {
     public partial class NetworkDataType
     {
-        public static readonly byte PlayerTransform = 10;
+        public static readonly byte UpdateObjectPose = 10;
     }
 
     public class NetworkDataSize
     {
         public static readonly int MaxNetworkObjectID = 1000;
-        public static readonly int ActorIdAndTransform = sizeof(int) + sizeof(float) * 7;
-        public static readonly int Transform = sizeof(float) * 7;
+        public static readonly int IdAndPose = sizeof(int) + sizeof(float) * 7;
     }
 }

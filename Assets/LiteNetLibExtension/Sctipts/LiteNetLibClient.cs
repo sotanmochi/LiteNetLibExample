@@ -98,10 +98,10 @@ namespace LiteNetLibExtension
             if ((_ServerPeer != null) && (peer.Id == _ServerPeer.Id))
             {
                 _ServerPeer = null;
-                OnDisconnectedServer?.Invoke();
             }
             Debug.Log("OnPeerDisconnected : " + peer.EndPoint.Address + " : " + peer.EndPoint.Port + " Reason : " + disconnectInfo.Reason.ToString());
             Debug.Log("OnPeerDisconnected.Peer.Id : " + peer.Id);
+            OnDisconnectedServer?.Invoke();
         }
 
         void INetEventListener.OnNetworkError(IPEndPoint endPoint, SocketError socketError)
@@ -111,7 +111,7 @@ namespace LiteNetLibExtension
 
         void INetEventListener.OnNetworkReceive(NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
         {
-            if (reader.UserDataSize >= 4)
+            if (reader.UserDataSize >= 1)
             {
                 byte dataType = reader.GetByte();
                 OnNetworkReceived?.Invoke(dataType, peer, reader, deliveryMethod);
