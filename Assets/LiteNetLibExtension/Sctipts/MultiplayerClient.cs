@@ -7,22 +7,19 @@ using LiteNetLib.Utils;
 
 namespace LiteNetLibExtension
 {
-    public delegate void OnConnectedServerDelegate(int actorId);
-    public delegate void OnCreatedRoomDelegate(string groupName);
-    public delegate void OnJoinedRoomDelegate(int actorId, string userName, string groupName);
-    public delegate void OnLeftRoomDelegate(int actorId);
-
-    public class MultiplayerClient : MonoBehaviour
+    public class MultiplayerClient : MonoBehaviour, IMultiplayerClient
     {
         [SerializeField] LiteNetLibClient _LiteNetLibClient;
-        public OnNetworkReceiveDelegate OnNetworkReceived;
-        public OnConnectedServerDelegate OnConnectedServer;
-        public OnDisconnectedServerDelegate OnDisconnectedServer;
-        public OnCreatedRoomDelegate OnCreatedRoom;
-        public OnJoinedRoomDelegate OnJoinedRoom;
-        public OnLeftRoomDelegate OnLeftRoom;
 
-        int _LocalActorId;
+        public OnNetworkEventReceivedDelegate OnNetworkEventReceivedHandler;
+        public OnConnectedToServerDelegate OnConnectedToServerHandler;
+        public OnDisconnectedDelegate OnDisconnectedServerHandler;
+        public OnCreatedRoomDelegate OnCreatedRoomHandler;
+        public OnJoinedRoomDelegate OnJoinedRoomHandler;
+        public OnLeftRoomDelegate OnLeftRoomHandler;
+        public OnPlayerLeftRoomDelegate OnPlayerLeftRoomHandler;
+
+        int _LocalActorId = -1;
         public int LocalActorId => _LocalActorId;
         string _LocalUserName;
         public string LocalUserName => _LocalUserName;
@@ -44,16 +41,8 @@ namespace LiteNetLibExtension
 
         public void Initialize()
         {
-            // _LiteNetLibClient.OnNetworkReceived += OnNetworkReceived;
-            _LiteNetLibClient.OnNetworkReceived += OnNetworkReceivedHandler;
-            _LiteNetLibClient.OnDisconnectedServer += OnDisconnectedServer;
-            _LiteNetLibClient.OnDisconnectedServer += OnDisconnectedServerHandler;
-
-            OnConnectedServer += OnConnectedServerHandler;
-            OnCreatedRoom += OnCreatedRoomHandler;
-            OnJoinedRoom += OnJoinedRoomHandler;
-            OnLeftRoom += OnLeftRoomHandler;
-
+            _LiteNetLibClient.OnNetworkEventReceived += OnNetworkEventReceived;
+            _LiteNetLibClient.OnDisconnected += OnDisconnectedServer;
             _Initialized = true;
         }
 
@@ -66,15 +55,10 @@ namespace LiteNetLibExtension
             return _LiteNetLibClient.StartClient();
         }
 
-        public void SendData(NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
+        public void SendData(NetDataWriter dataWriter)
         {
-            if (_Joined)
             {
-                _LiteNetLibClient.SendData(dataWriter, deliveryMethod);
-            }
-            else
-            {
-                Debug.LogError("MultiplayerClient has not joined room !!");
+                _LiteNetLibClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
             }
         }
 
@@ -84,7 +68,7 @@ namespace LiteNetLibExtension
             dataWriter.Put(NetworkDataType.CreateRoom);
             dataWriter.Put(actorId);
             dataWriter.Put(groupName);
-            _LiteNetLibClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
+            SendData(dataWriter);
         }
 
         public void JoinRoom(string userName, string groupName)
@@ -93,81 +77,109 @@ namespace LiteNetLibExtension
             dataWriter.Put(NetworkDataType.JoinRoom);
             dataWriter.Put(userName);
             dataWriter.Put(groupName);
-            _LiteNetLibClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
+            SendData(dataWriter);
         }
 
         public void LeaveRoom()
         {
-            _Joined = false;
-            Debug.Log("LeaveRoom");
             NetDataWriter dataWriter = new NetDataWriter();
             dataWriter.Put(NetworkDataType.LeaveRoom);
             dataWriter.Put(_LocalActorId);
-            _LiteNetLibClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
+            SendData(dataWriter);
         }
 
-        void OnNetworkReceivedHandler(byte networkDataType, NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
+        void OnNetworkEventReceived(byte networkDataType, NetDataReader reader)
         {
-            Debug.Log("NetworkDataType: " + networkDataType);
+            Debug.Log("OnNetworkReceived@MuliplayerClient");
             if (networkDataType == NetworkDataType.OnConnectedServer)
             {
                 int actorId = reader.GetInt();
-                OnConnectedServer?.Invoke(actorId);
+                OnConnectedServer(actorId);
             }
             if (networkDataType == NetworkDataType.OnCreatedRoom)
             {
                 int actorId = reader.GetInt();
                 string groupName = reader.GetString();
-                OnCreatedRoom?.Invoke(groupName);
+                OnCreatedRoom(groupName);
             }
             if (networkDataType == NetworkDataType.OnJoinedRoom)
             {
+                Debug.Log("OnJoined @MuliplayerClient");
                 int actorId = reader.GetInt();
                 string userName = reader.GetString();
                 string groupName = reader.GetString();
-                OnJoinedRoom?.Invoke(actorId, userName, groupName);
+                OnJoinedRoom(actorId, userName, groupName);
             }
             if (networkDataType == NetworkDataType.OnLeftRoom)
             {
                 int actorId = reader.GetInt();
-                OnLeftRoom?.Invoke(actorId);
+                OnLeftRoom(actorId);
+            }
+            if (networkDataType == NetworkDataType.OnPlayerLeftRoom)
+            {
+                int actorId = reader.GetInt();
+                OnPlayerLeftRoom(actorId);
             }
 
-            OnNetworkReceived?.Invoke(networkDataType, peer, reader, deliveryMethod);
+            Debug.Log("OnNetworkReceivedHandler.Invoke() @MuliplayerClient");
+            OnNetworkEventReceivedHandler?.Invoke(networkDataType, reader);
         }
 
-        void OnConnectedServerHandler(int actorId)
+        void OnConnectedServer(int actorId)
         {
-            Debug.Log("OnConnectedServerHandler@MultiplayerClient");
-            _LocalActorId = actorId;
             _ConnectedServer = true;
             _Joined = false;
+            _LocalActorId = actorId;
+
+            Debug.Log("OnConnectedServer@MultiplayerClient");
+            OnConnectedToServerHandler?.Invoke(actorId);
         }
 
-        void OnDisconnectedServerHandler()
+        void OnDisconnectedServer()
         {
             _ConnectedServer = false;
             _Joined = false;
-            Debug.Log("OnDisconnectedServerHandler@MultiplayerClient");
+            _LocalActorId = -1;
+
+            Debug.Log("OnDisconnectedServer@MultiplayerClient");
+            OnDisconnectedServerHandler?.Invoke();
         }
 
-        void OnCreatedRoomHandler(string groupName)
+        void OnCreatedRoom(string groupName)
         {
-            Debug.Log("OnCreatedRoom: " + groupName);
+            Debug.Log("OnCreatedRoom: " + groupName + " @MultiplayerClient");            
+            OnCreatedRoomHandler?.Invoke(groupName);
         }
 
-        void OnJoinedRoomHandler(int actorId, string userName, string groupName)
+        void OnJoinedRoom(int actorId, string userName, string groupName)
         {
             _Joined = true;
             _LocalActorId = actorId;
             _LocalUserName = userName;
             _GroupName = groupName;
-            Debug.Log("OnJoinedRoom: " + ": " + actorId + ": " + userName + ": " + groupName);
+
+            Debug.Log("OnJoinedRoom: " + ": " + actorId + ": " + userName + ": " + groupName + " @MultiplayerClient");
+            OnJoinedRoomHandler?.Invoke(actorId, userName, groupName);
         }
 
-        void OnLeftRoomHandler(int actorId)
+        void OnLeftRoom(int actorId)
         {
-            Debug.Log("OnLeftRoom: " + actorId);
+            if (actorId == _LocalActorId)
+            {
+                _Joined = false;
+                _LocalActorId = -1;
+                _LocalUserName = "";
+                _GroupName = "";
+
+                Debug.Log("OnLeftRoom @MultiplayerClient");
+                OnLeftRoomHandler?.Invoke();
+            }
+        }
+
+        void OnPlayerLeftRoom(int actorId)
+        {
+            Debug.Log("OnPlayerLeftRoom");   
+            OnPlayerLeftRoomHandler?.Invoke(actorId);
         }
     }
 }

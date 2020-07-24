@@ -6,7 +6,7 @@ using UnityEngine;
 using LiteNetLib;
 using LiteNetLib.Utils;
 
-namespace LiteNetLibExtension
+namespace LiteNetLibExtension.Server
 {
     public class Actor
     {
@@ -21,16 +21,14 @@ namespace LiteNetLibExtension
         public List<int> Actors = new List<int>();
     }
 
-    public delegate void OnCreateRoomDelegate(int actorId, string groupName);
-    public delegate void OnLeaveRoomDelegate(int actorId);
-
-    public class MultiplayerServer : MonoBehaviour
+    public class MultiplayerServer : MonoBehaviour, IMultiplayerServer
     {
         [SerializeField] LiteNetLibServer _LiteNetLibServer;
         public LiteNetLibServer LiteNetLibServer => _LiteNetLibServer;
-        public OnNetworkReceiveDelegate OnNetworkReceived;
+
         public OnCreateRoomDelegate OnCreateRoom;
         public OnLeaveRoomDelegate OnLeaveRoom;
+        public OnNetworkEventReceivedDelegate OnNetworkEventReceived;
 
         Dictionary<int, Actor> _Actors = new Dictionary<int, Actor>();
         Dictionary<string, Group> _Groups = new Dictionary<string, Group>();
@@ -38,36 +36,40 @@ namespace LiteNetLibExtension
 
         public void StartServer()
         {
-            _LiteNetLibServer.OnNetworkReceived += OnNetworkReceived;
-            _LiteNetLibServer.OnNetworkReceived += OnNetworkReceivedHandler;
+            _LiteNetLibServer.OnNetworkEventReceived += OnNetworkEventReceivedHandler;
             _LiteNetLibServer.OnPeerDisconnectedHandler += OnPeerDisconnectedHandler;
             _LiteNetLibServer.StartServer();
         }
 
-        public void SendToGroup(string groupName, NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
+        public void SendData(int targetClientId, NetDataWriter dataWriter)
+        {
+            _LiteNetLibServer.SendData(targetClientId, dataWriter, DeliveryMethod.ReliableOrdered);
+        }
+
+        public void SendToGroup(string groupName, NetDataWriter dataWriter)
         {
             if (_Groups.ContainsKey(groupName))
             {
                 foreach (int actorId in _Groups[groupName].Actors)
                 {
-                    _LiteNetLibServer.SendData(actorId, dataWriter, deliveryMethod);
+                    _LiteNetLibServer.SendData(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
                 }
             }
         }
 
-        public void SendToGroup(int senderId, NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
+        public void SendToGroup(int senderId, NetDataWriter dataWriter)
         {
             if (_Actors.ContainsKey(senderId))
             {
                 string groupName = _Actors[senderId].GroupName;
                 foreach (int actorId in _Groups[groupName].Actors)
                 {
-                    _LiteNetLibServer.SendData(actorId, dataWriter, deliveryMethod);
+                    _LiteNetLibServer.SendData(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
                 }
             }
         }
 
-        public void SendToGroupExceptSelf(int senderId, NetDataWriter dataWriter, DeliveryMethod deliveryMethod)
+        public void SendToGroupExceptSelf(int senderId, NetDataWriter dataWriter)
         {
             if (_Actors.ContainsKey(senderId))
             {
@@ -76,45 +78,47 @@ namespace LiteNetLibExtension
                 {
                     if (actorId != senderId)
                     {
-                        _LiteNetLibServer.SendData(actorId, dataWriter, deliveryMethod);
+                        _LiteNetLibServer.SendData(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
                     }
                 }
             }
         }
 
-        void OnNetworkReceivedHandler(byte networkDataType, NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
+        void OnNetworkEventReceivedHandler(byte networkDataType, NetDataReader dataReader, int clientId)
         {
             if (networkDataType == NetworkDataType.CreateRoom)
             {
                 Debug.Log("CrateRoom");
-                int actorId = LiteNetLibUtil.Peer2ClientId(peer);
-                string groupName = reader.GetString();
+                int actorId = clientId;
+                string groupName = dataReader.GetString();
                 CreateRoom(actorId, groupName);
             }
             if (networkDataType == NetworkDataType.JoinRoom)
             {
                 Debug.Log("JoinRoom");
-                int actorId = LiteNetLibUtil.Peer2ClientId(peer);
-                string userName = reader.GetString();
-                string groupName = reader.GetString();
+                int actorId = clientId;
+                string userName = dataReader.GetString();
+                string groupName = dataReader.GetString();
                 JoinRoom(actorId, userName, groupName);
             }
             if (networkDataType == NetworkDataType.LeaveRoom)
             {
                 Debug.Log("LeaveRoom");
-                int actorId = LiteNetLibUtil.Peer2ClientId(peer);
+                int actorId = clientId;
                 LeaveRoom(actorId);
             }
+
+            OnNetworkEventReceived?.Invoke(networkDataType, dataReader, clientId);
         }
 
-        void OnPeerDisconnectedHandler(NetPeer peer)
+        void OnPeerDisconnectedHandler(int clientId)
         {
-            int clientId = LiteNetLibUtil.Peer2ClientId(peer);
             LeaveRoom(clientId);
         }
 
-        void CreateRoom(int actorId, string groupName)
+        public void CreateRoom(int actorId, string groupName)
         {
+            Debug.Log("CreateRoom");
             if (!_Groups.ContainsKey(groupName))
             {
                 Group group = new Group();
@@ -127,11 +131,13 @@ namespace LiteNetLibExtension
                 dataWriter.Put(NetworkDataType.OnCreatedRoom);
                 dataWriter.Put(actorId);
                 dataWriter.Put(groupName);
-                _LiteNetLibServer.SendData(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
+
+                SendData(actorId, dataWriter);
+                Debug.Log("OnCreatedRoom");
             }
         }
 
-        void JoinRoom(int actorId, string userName, string groupName)
+        public void JoinRoom(int actorId, string userName, string groupName)
         {
             if (_Actors.ContainsKey(actorId))
             {
@@ -158,10 +164,11 @@ namespace LiteNetLibExtension
             dataWriter.Put(userName);
             dataWriter.Put(groupName);
 
-            _LiteNetLibServer.SendData(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
+            SendData(actorId, dataWriter);
+            Debug.Log("OnJoinedRoom");
         }
 
-        void LeaveRoom(int actorId)
+        public void LeaveRoom(int actorId)
         {
             if (_Actors.ContainsKey(actorId))
             {
@@ -173,7 +180,13 @@ namespace LiteNetLibExtension
                 NetDataWriter dataWriter = new NetDataWriter();
                 dataWriter.Put(NetworkDataType.OnLeftRoom);
                 dataWriter.Put(actorId);
-                SendToGroup(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
+                SendData(actorId, dataWriter);
+                Debug.Log("OnLeaveRoom");
+
+                dataWriter.Reset();
+                dataWriter.Put(NetworkDataType.OnPlayerLeftRoom);
+                dataWriter.Put(actorId);
+                SendToGroupExceptSelf(actorId, dataWriter);
 
                 group.Actors.Remove(actorId);
                 if (group.Actors.Count <= 0)

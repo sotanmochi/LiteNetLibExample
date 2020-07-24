@@ -9,7 +9,7 @@ using LiteNetLib.Utils;
 
 namespace LiteNetLibExtension
 {
-    public delegate void OnDisconnectedServerDelegate();
+    public delegate void OnDisconnectedDelegate();
 
     public class LiteNetLibClient : MonoBehaviour, INetEventListener
     {
@@ -18,15 +18,25 @@ namespace LiteNetLibExtension
         NetManager _ClientNetManager;
         NetPeer _ServerPeer;
 
-        public OnNetworkReceiveDelegate OnNetworkReceived;
-        public OnDisconnectedServerDelegate OnDisconnectedServer;
+        public event OnNetworkEventReceivedDelegate OnNetworkEventReceived;
+        public event OnDisconnectedDelegate OnDisconnected;
 
-        void FixedUpdate()
+        void Awake()
         {
-            if (_ClientNetManager != null && _ClientNetManager.IsRunning)
+            _ClientNetManager = new NetManager(this);
+        }
+
+        void Update()
+        {
+            if (_ClientNetManager.IsRunning)
             {
                 _ClientNetManager.PollEvents();
             }
+        }
+
+        void LateUpdate()
+        {
+            // Send queues
         }
 
         public bool StartClient()
@@ -98,10 +108,10 @@ namespace LiteNetLibExtension
             if ((_ServerPeer != null) && (peer.Id == _ServerPeer.Id))
             {
                 _ServerPeer = null;
+                OnDisconnected?.Invoke();
             }
             Debug.Log("OnPeerDisconnected : " + peer.EndPoint.Address + " : " + peer.EndPoint.Port + " Reason : " + disconnectInfo.Reason.ToString());
             Debug.Log("OnPeerDisconnected.Peer.Id : " + peer.Id);
-            OnDisconnectedServer?.Invoke();
         }
 
         void INetEventListener.OnNetworkError(IPEndPoint endPoint, SocketError socketError)
@@ -114,7 +124,7 @@ namespace LiteNetLibExtension
             if (reader.UserDataSize >= 1)
             {
                 byte dataType = reader.GetByte();
-                OnNetworkReceived?.Invoke(dataType, peer, reader, deliveryMethod);
+                OnNetworkEventReceived?.Invoke(dataType, reader);
             }
         }
 

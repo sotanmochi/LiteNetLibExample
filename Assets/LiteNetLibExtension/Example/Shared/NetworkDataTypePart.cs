@@ -5,7 +5,9 @@ namespace LiteNetLibExtension
 {
     public partial class NetworkDataType
     {
-        public static readonly byte UpdateObjectPose = 10;
+        public static readonly byte NetworkInstantiate = 10;
+        public static readonly byte RemoveNetworkObjects = 11;
+        public static readonly byte UpdateObjectPose = 12;
     }
 
     public class NetworkDataSize

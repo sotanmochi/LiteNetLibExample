@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using LiteNetLib;
 using LiteNetLib.Utils;
 
 namespace LiteNetLibExtension.Example.Client
@@ -19,10 +18,11 @@ namespace LiteNetLibExtension.Example.Client
 
         void Start()
         {
-            _MultiplayerClient.OnNetworkReceived += OnNetworkReceivedHandler;
-            _MultiplayerClient.OnLeftRoom += OnLeftRoom;
-            _MultiplayerClient.OnConnectedServer += OnConnectedServer;
-            _MultiplayerClient.OnDisconnectedServer += OnDisconnectedServer;
+            _MultiplayerClient.OnNetworkEventReceivedHandler += OnNetworkEventReceived;
+            _MultiplayerClient.OnLeftRoomHandler += OnLeftRoom;
+            // _MultiplayerClient.OnPlayerLeftRoomHandler += OnPlayerLeftRoom;
+            _MultiplayerClient.OnConnectedToServerHandler += OnConnectedServer;
+            _MultiplayerClient.OnDisconnectedServerHandler += OnDisconnectedServer;
 
             _LocalObjectDictionary = new Dictionary<int, GameObject>();
             _NetworkObjectDictionary = new Dictionary<int, GameObject>();
@@ -71,7 +71,9 @@ namespace LiteNetLibExtension.Example.Client
             dataWriter.Put(rotation.z);
             dataWriter.Put(rotation.w);
 
-            _MultiplayerClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
+            Debug.Log("NetworkInstantiate @GameClient");
+            _MultiplayerClient.SendData(dataWriter);
+            Debug.Log("Sent InstantiateData @GameClient");
         }
 
         public void SendPose()
@@ -104,10 +106,12 @@ namespace LiteNetLibExtension.Example.Client
                 dataWriter.Put(rotation.w);
             }
 
-            _MultiplayerClient.SendData(dataWriter, DeliveryMethod.ReliableOrdered);
+            Debug.Log("SendPose @GameClient");
+            _MultiplayerClient.SendData(dataWriter);
+            Debug.Log("Sent PoseData @GameClient");
         }
 
-        void OnNetworkReceivedHandler(byte networkDataType, NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
+        void OnNetworkEventReceived(byte networkDataType, NetDataReader reader)
         {
             Debug.Log("OnNetworkReceived@GameClient");
             if (networkDataType == NetworkDataType.NetworkInstantiate)
@@ -174,12 +178,9 @@ namespace LiteNetLibExtension.Example.Client
             Debug.Log("OnDisconnectedServer@GameClient");
         }
 
-        void OnLeftRoom(int actorId)
+        void OnLeftRoom()
         {
-            if (actorId == _MultiplayerClient.LocalActorId)
-            {
-                OnRemoveLocalObjects();
-            }
+            OnRemoveLocalObjects();
         }
 
         void OnNetworkInstantiate(int objectId, string prefabName, float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float rotW)

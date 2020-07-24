@@ -9,11 +9,11 @@ using UnityEngine;
 using LiteNetLib;
 using LiteNetLib.Utils;
 
-namespace LiteNetLibExtension
+namespace LiteNetLibExtension.Server
 {
-    public delegate void OnPeerConnectedDelegate(NetPeer peer);
-    public delegate void OnPeerDisconnectedDelegate(NetPeer peer);
-    public delegate void OnNetworkReceiveDelegate(byte dataType, NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod);
+    public delegate void OnPeerConnectedDelegate(int clientId);
+    public delegate void OnPeerDisconnectedDelegate(int clientId);
+    public delegate void OnNetworkEventReceivedDelegate(byte dataType, NetDataReader dataReader, int clientId);
 
     public class LiteNetLibServer : MonoBehaviour, INetEventListener
     {
@@ -25,16 +25,27 @@ namespace LiteNetLibExtension
         NetManager _ServerNetManager;
         Dictionary<int, NetPeer> _ConnectedClients;
 
-        public OnPeerConnectedDelegate OnPeerConnectedHandler;
-        public OnPeerDisconnectedDelegate OnPeerDisconnectedHandler;
-        public OnNetworkReceiveDelegate OnNetworkReceived;
+        public event OnPeerConnectedDelegate OnPeerConnectedHandler;
+        public event OnPeerDisconnectedDelegate OnPeerDisconnectedHandler;
+        public event OnNetworkEventReceivedDelegate OnNetworkEventReceived;
 
-        void FixedUpdate()
+        void Awake()
+        {
+            _ServerNetManager = new NetManager(this);
+            _ConnectedClients = new Dictionary<int, NetPeer>();
+        }
+
+        void Update()
         {
             if (_ServerNetManager.IsRunning)
             {
                 _ServerNetManager.PollEvents();
             }
+        }
+
+        void LateUpdate()
+        {
+            // Send queue
         }
 
         void OnApplicationQuit()
@@ -60,9 +71,6 @@ namespace LiteNetLibExtension
                         break;
                 }
             }
-
-            _ServerNetManager = new NetManager(this);
-            _ConnectedClients = new Dictionary<int, NetPeer>();
 
             if (_ServerNetManager.Start(_Port))
             {
@@ -95,14 +103,13 @@ namespace LiteNetLibExtension
             }
             else
             {
-                
+                Debug.LogError("Client[" + clientId + "] has not connected. @LiteNetLibServer.SendData()");
+                Console.WriteLine("Client[" + clientId + "] has not connected. @LiteNetLibServer.SendData()");
             }
         }
 
         void INetEventListener.OnPeerConnected(NetPeer peer)
         {
-            Console.WriteLine("OnPeerConnected : " + peer.EndPoint.Address + " : " + peer.EndPoint.Port);
-
             int clientId = LiteNetLibUtil.Peer2ClientId(peer);
             if (!_ConnectedClients.ContainsKey(clientId))
             {
@@ -110,13 +117,13 @@ namespace LiteNetLibExtension
             }
 
             Debug.Log("OnPeerConnected.clientId: " + clientId);
-            Debug.Log("NetworkDataType: " + NetworkDataType.OnConnectedServer);
+
             NetDataWriter dataWriter = new NetDataWriter();
             dataWriter.Put(NetworkDataType.OnConnectedServer);
             dataWriter.Put(clientId);
             peer.Send(dataWriter, DeliveryMethod.ReliableOrdered);
 
-            OnPeerConnectedHandler?.Invoke(peer);
+            OnPeerConnectedHandler?.Invoke(clientId);
         }
 
         void INetEventListener.OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
@@ -129,7 +136,7 @@ namespace LiteNetLibExtension
                 _ConnectedClients.Remove(clientId);
             }
 
-            OnPeerDisconnectedHandler?.Invoke(peer);
+            OnPeerDisconnectedHandler?.Invoke(clientId);
         }
 
         void INetEventListener.OnNetworkError(IPEndPoint endPoint, SocketError socketError)
@@ -142,7 +149,8 @@ namespace LiteNetLibExtension
            if (reader.UserDataSize >= 1)
             {
                 byte dataType = reader.GetByte();
-                OnNetworkReceived?.Invoke(dataType, peer, reader, deliveryMethod);
+                int clientId = LiteNetLibUtil.Peer2ClientId(peer);
+                OnNetworkEventReceived?.Invoke(dataType, reader, clientId);
             }
         }
 

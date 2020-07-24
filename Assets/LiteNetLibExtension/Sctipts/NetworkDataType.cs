@@ -12,7 +12,6 @@ namespace LiteNetLibExtension
         public static readonly byte OnJoinedRoom = 4;
         public static readonly byte LeaveRoom = 5;
         public static readonly byte OnLeftRoom = 6;
-        public static readonly byte NetworkInstantiate = 7;
-        public static readonly byte RemoveNetworkObjects = 8;
+        public static readonly byte OnPlayerLeftRoom = 7;
     }
 }

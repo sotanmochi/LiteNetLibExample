@@ -3,10 +3,9 @@
 
 using System.Collections.Generic;
 using UnityEngine;
-using LiteNetLib;
 using LiteNetLib.Utils;
 
-namespace LiteNetLibExtension.Example.Server
+namespace LiteNetLibExtension.Server.Example
 {
     public class GameServer : MonoBehaviour
     {
@@ -17,17 +16,17 @@ namespace LiteNetLibExtension.Example.Server
         void Start()
         {
             _MultiplayerServer.OnLeaveRoom += OnLeaveRoomHandler;
-            _MultiplayerServer.LiteNetLibServer.OnNetworkReceived += OnNetworkReceivedHandler;
+            _MultiplayerServer.OnNetworkEventReceived += OnNetworkReceivedHandler;
             _NetworkObjectDictionary = new Dictionary<string, Dictionary<int, GameObject>>();
             _MultiplayerServer.StartServer();
         }
 
         void LateUpdate()
         {
-            SendNetworkObjectPose();
+            // SendNetworkObjectPose();
         }
 
-        void OnNetworkReceivedHandler(byte networkDataType, NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
+        void OnNetworkReceivedHandler(byte networkDataType, NetDataReader reader, int clientId)
         {
             if (networkDataType == NetworkDataType.NetworkInstantiate)
             {               
@@ -41,7 +40,6 @@ namespace LiteNetLibExtension.Example.Server
                 float rotZ = reader.GetFloat();
                 float rotW = reader.GetFloat();
 
-                int clientId = LiteNetLibUtil.Peer2ClientId(peer);
                 NetworkInstantiate(clientId, objectId, prefabName, posX, posY, posZ, rotX, rotY, rotZ, rotW);
             }
             if (networkDataType == NetworkDataType.UpdateObjectPose)
@@ -108,7 +106,8 @@ namespace LiteNetLibExtension.Example.Server
                     dataWriter.Put(rotation.w);
                 }
 
-                _MultiplayerServer.SendToGroup(groupName, dataWriter, DeliveryMethod.ReliableOrdered);
+                Debug.Log("SendNetworkObjectPose: [" + groupName + "]");
+                _MultiplayerServer.SendToGroup(groupName, dataWriter);
             }
         }
 
@@ -138,7 +137,7 @@ namespace LiteNetLibExtension.Example.Server
             dataWriter.Put(rotZ);
             dataWriter.Put(rotW);
 
-            _MultiplayerServer.SendToGroupExceptSelf(senderId, dataWriter, DeliveryMethod.ReliableOrdered);
+            _MultiplayerServer.SendToGroupExceptSelf(senderId, dataWriter);
         }
 
         void RemoveNetworkObjects(int actorId)
@@ -170,7 +169,8 @@ namespace LiteNetLibExtension.Example.Server
                 }
             }
 
-            _MultiplayerServer.SendToGroupExceptSelf(actorId, dataWriter, DeliveryMethod.ReliableOrdered);
+            Debug.Log("RemoveNetworkObjects @GameServer");
+            _MultiplayerServer.SendToGroupExceptSelf(actorId, dataWriter);
         }
     }
 }
